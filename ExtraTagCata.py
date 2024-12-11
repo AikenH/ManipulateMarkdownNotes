@@ -53,7 +53,8 @@ def create_markdown_files_for_metadata(metadata_dict, subtitle_dict, directory):
 
 
 # Define the directory containing your markdown files
-directory = '...../Post/'
+directory = '/Users/aikenhong/OneDrive/Posts文档/Post/'
+directory = '/home/aikenhong/workspace/posts/StudyNotes/WebDevelop/'
 # Replace with your directory path
 print("Starting the processing of markdown files...")
 
@@ -61,6 +62,6 @@ print("Starting the processing of markdown files...")
 metadata_dict, subtitle_dict = process_markdown_files(directory)
 print("Creating markdown files for each tag and category...")
 # Create markdown files for each tag and categories
-outputdire = "...../workspace/tmp/blog_tags"
+outputdire = "/home/aikenhong/workspace/tmp/blog_tags"
 create_markdown_files_for_metadata(metadata_dict, subtitle_dict, outputdire)
 print("Processing completed.")
