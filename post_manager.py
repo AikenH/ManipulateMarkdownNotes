@@ -1,7 +1,13 @@
 # FIXME: 重建Github仓库，基于GPT重写README;
+# TODO: 自动触发发布任务：
+# * 1. Publish文件有改动的时候定期触发发布任务，发布到指定的hugo文件夹中，随后自动commit并更新github
+# * 2. Linklog文件夹随着Publish的改动同步更新，同样用.env or sql 存储对应的文件夹数据，当发生改动的时候将新增的文件publish出去
+
+from curses import meta
 from datetime import datetime
 import os
 import re
+import random
 import logging
 import frontmatter
 from glob import glob
@@ -222,12 +228,19 @@ class PostManipulator:
             # get the final num in the file name.
             idx = re.findall(r"\d+", src.split("/")[-1])[-1]
             # FIXME: tmp usage, get the real num after.
-            if int(idx) > 19: 
+            if int(idx) > 27: 
                 idx = str(int(idx) % 27)
+            idx = random.randint(0, 26)
+            # print(idx)
             src = self.cover_base_path.format(idx)
             meta_info["cover"] = {"image": src}
 
+        # * 3. using description replace subtitle
+        if "subtitle" in meta_info:
+            meta_info["description"] = meta_info.pop("subtitle")
+
         return True
+    
     
     def _modify_hugo_content(self, post_content, encrypt=None) -> str:
         # modify those special display.
@@ -358,13 +371,13 @@ class PostManipulator:
 
 
 if __name__ == "__main__":
-    post_list = glob("/Users/aikenhong/Library/CloudStorage/OneDrive-个人/Posts文档/Published发布/*.md")
-    post_manager = PostManipulator(pub_type='hugo', pub_path='/Users/aikenhong/Library/CloudStorage/OneDrive-个人/Posts文档/tmp_category')
-    # post_manager.publish(post_path=post_list)
+    post_list = glob("/Users/aikenhong/Library/CloudStorage/OneDrive-个人/Posts文档/Published发布/修改hugo主题的markdown渲染.md")
+    post_manager = PostManipulator(pub_type='hugo', pub_path='/Users/aikenhong/workspace/hugo-theme/content/posts')
+    post_manager.publish(post_path=post_list)
 
     # metadata = frontmatter.load("./test.md")
     # logger.warning("[metadata]"+str(metadata.metadata))
 
     # posts = PostsIterator("/Users/aikenhong/Library/CloudStorage/OneDrive-个人/Posts文档")
 
-    post_manager.store_by_categories(post_list)
+    # post_manager.store_by_categories(post_list)
