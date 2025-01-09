@@ -13,10 +13,10 @@ import random
 import logging
 import frontmatter
 from glob import glob
+import logging.handlers
+import platform
 
 # * consider setup logger by .env file
-
-import logging.handlers
 # Configure logging with file rotation and detailed format
 log_dir = os.path.join(os.path.dirname(__file__), 'logs')
 os.makedirs(log_dir, exist_ok=True)
@@ -463,6 +463,8 @@ class PostModificationScanner:
             if current_md5 != publish_md5:
                 logger.info(f"Updating {filename} in the Publish folder")
                 # shutil.copy(file_path, publish_file_path)
+            else:
+                logger.info(f" {filename} have some hdf5 info")
         else:
             return
 
@@ -474,6 +476,36 @@ class PublishDirectoryUpdateScanner:
     def scan_and_update(self):
         
         return 
+
+def test_logger():
+    logger.debug("This is a debug message for testing logger.")
+    logger.info("This is an info message for testing logger.")
+    logger.warning("This is a warning message for testing logger.")
+    logger.error("This is an error message for testing logger.")
+    logger.critical("This is a critical message for testing logger.")
+
+def test_platform_specific_functionality():
+    current_platform = platform.system()
+    logger.info(f"Running tests on platform: {current_platform}")
+
+    if current_platform == "Windows":
+        logger.info("Testing on Windows platform.")
+        post_scanner = PostModificationScanner("D:\OneDrive\Posts文档", "D:\OneDrive\Posts文档\Published发布")
+        post_scanner.scan_and_update()
+
+    elif current_platform == "Darwin":
+        logger.info("Testing on macOS platform.")
+        post_scanner = PostModificationScanner("/Users/aikenhong/Library/CloudStorage/OneDrive-个人/Posts文档", "/Users/aikenhong/Library/CloudStorage/OneDrive-个人/Posts文档/Published发布")
+        post_scanner.scan_and_update()
+    elif current_platform == "Linux":
+        logger.info("Testing on Linux platform.")
+
+    else:
+        logger.warning("Unknown platform. No specific tests available.")
+        return
+    
+    return
+    # post_manager.publish(post_path=post_list)
 
 if __name__ == "__main__":
     # ----------------test publish 
@@ -492,12 +524,12 @@ if __name__ == "__main__":
 
 
     # ----------------test sync post.
-    post_scanner = PostModificationScanner("D:\OneDrive\Posts文档", "D:\OneDrive\Posts文档\Published发布")
-    post_scanner.scan_and_update()
+    # post_scanner = PostModificationScanner("D:\OneDrive\Posts文档", "D:\OneDrive\Posts文档\Published发布")
+    # post_scanner.scan_and_update()
 
     # Test logger functionality
-    # logger.debug("This is a debug message for testing logger.")
-    # logger.info("This is an info message for testing logger.")
-    # logger.warning("This is a warning message for testing logger.")
-    # logger.error("This is an error message for testing logger.")
-    # logger.critical("This is a critical message for testing logger.")
+    # test_logger()
+
+    # Test platform-specific functionality
+    test_platform_specific_functionality()
+
