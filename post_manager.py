@@ -3,8 +3,10 @@
 # * 1. Publish文件有改动的时候定期触发发布任务，发布到指定的hugo文件夹中，随后自动commit并更新github
 # * 2. Linklog文件夹随着Publish的改动同步更新，同样用.env or sql 存储对应的文件夹数据，当发生改动的时候将新增的文件publish出去
 
-from curses import meta
-from datetime import datetime
+from datetime import datetime, timedelta
+import hashlib
+import shutil
+
 import os
 import re
 import random
@@ -310,6 +312,7 @@ class PostManipulator:
         encrypt_content += content
         encrypt_content += "\n{{% /hugo-encryptor %}}"
         return encrypt_content
+    
         
     def _surround_latex_by_tag(self, content:str) -> str:
         # *. need to match those inline latex & block latex & ignore those $ in ``` block
@@ -370,14 +373,76 @@ class PostManipulator:
         return latex_block  # Return the original block if already wrapped
 
 
-if __name__ == "__main__":
-    post_list = glob("/Users/aikenhong/Library/CloudStorage/OneDrive-个人/Posts文档/Published发布/修改hugo主题的markdown渲染.md")
-    post_manager = PostManipulator(pub_type='hugo', pub_path='/Users/aikenhong/workspace/hugo-theme/content/posts')
-    post_manager.publish(post_path=post_list)
+class PostModificationScanner:
+    def __init__(self, source_folder, publish_folder):
+        self.source_folder = source_folder
+        self.publish_folder = publish_folder
 
+    def scan_and_update(self):
+        for dirpath, dirnames, filenames in os.walk(self.source_folder):
+            if self.is_publish_folder(dirpath):
+                continue
+        
+            for filename in filenames:
+                if filename.endswith('.md'):
+                    self.process_file(os.path.join(dirpath, filename))
+
+    def is_publish_folder(self, path):
+        return os.path.normpath(path) == os.path.normpath(self.publish_folder)
+
+    def is_modify_within_days(self, file_path, days=5):
+        modification_time = os.path.getmtime(file_path)
+        file_date = datetime.fromtimestamp(modification_time)
+        # print(f"{file_path}: delta f{datetime.now() - file_date}")
+        return datetime.now() - file_date <= timedelta(days=days)
+
+    def calculate_md5(self, file_path):
+        md5_hash = hashlib.md5()
+        with open(file_path, 'rb') as f:
+            for byte_block in iter(lambda: f.read(4096), b""):
+                md5_hash.update(byte_block)
+        return md5_hash.hexdigest()
+    
+    def process_file(self, file_path):
+        if not self.is_modify_within_days(file_path):
+            return 
+        filename = os.path.basename(file_path)
+        publish_file_path = os.path.join(self.publish_folder, filename)
+
+        if os.path.exists(publish_file_path):
+            current_md5 = self.calculate_md5(file_path)
+            publish_md5 = self.calculate_md5(publish_file_path)
+            if current_md5 != publish_md5:
+                print(f"Updating {filename} in the Publish folder")
+                shutil.copy(file_path, publish_file_path)
+        else:
+            return
+
+
+class PublishDirectoryUpdateScanner:
+    def __init__(self, published_folder):
+        self.published_folder = published_folder
+    
+    def scan_and_update(self):
+        
+        return 
+
+if __name__ == "__main__":
+    # ----------------test publish 
+    post_list = glob("/Users/aikenhong/Library/CloudStorage/OneDrive-个人/Posts文档/Published发布/*.md")
+    post_manager = PostManipulator(pub_type='hugo', pub_path='/Users/aikenhong/workspace/hugo-theme/content/posts')
+    # post_manager.publish(post_path=post_list)
+
+    # ----------------test metadata
     # metadata = frontmatter.load("./test.md")
     # logger.warning("[metadata]"+str(metadata.metadata))
 
-    # posts = PostsIterator("/Users/aikenhong/Library/CloudStorage/OneDrive-个人/Posts文档")
 
+    # ----------------test organize by categories.
+    # posts = PostsIterator("/Users/aikenhong/Library/CloudStorage/OneDrive-个人/Posts文档")
     # post_manager.store_by_categories(post_list)
+
+
+    # ----------------test sync post.
+    post_scanner = PostModificationScanner("D:\OneDrive\Posts文档", "D:\OneDrive\Posts文档\Published发布")
+    post_scanner.scan_and_update()
