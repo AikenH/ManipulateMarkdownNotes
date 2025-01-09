@@ -16,8 +16,36 @@ from glob import glob
 
 # * consider setup logger by .env file
 
-logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s ', datefmt='%Y-%m-%d %I:%M:%S %p', level=logging.WARNING)
+import logging.handlers
+# Configure logging with file rotation and detailed format
+log_dir = os.path.join(os.path.dirname(__file__), 'logs')
+os.makedirs(log_dir, exist_ok=True)
+
+log_format = '%(asctime)s | %(levelname)-8s | %(module)s:%(lineno)d | %(message)s'
+date_format = '%Y-%m-%d %H:%M:%S'
+
+# Create logger
 logger = logging.getLogger("post_process")
+logger.setLevel(logging.DEBUG)
+
+# File handler with rotation
+file_handler = logging.handlers.RotatingFileHandler(
+    filename=os.path.join(log_dir, 'post_manager.log'),
+    maxBytes=10*1024*1024,  # 10MB
+    backupCount=5,
+    encoding='utf-8'
+)
+file_handler.setFormatter(logging.Formatter(log_format, date_format))
+file_handler.setLevel(logging.DEBUG)
+
+# Console handler
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(logging.Formatter(log_format, date_format))
+console_handler.setLevel(logging.INFO)
+
+# Add handlers
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
 
 # FIXME: 根据不同平台自适应获取创建时间的函数
 # FIXME: 完善异常处理逻辑，不要直接终止流程，而是提示错误的文件
@@ -83,7 +111,7 @@ class PostsIterator:
         sort_file_list = sorted(file_data_list, key=lambda x: x["ctime"])
         if (verbose):
             for post in sort_file_list:
-                print(f"{post['pth']} - {datetime.fromtimestamp(post['ctime'])}")
+                logger.info(f"{post['pth']} - {datetime.fromtimestamp(post['ctime'])}")
         return sort_file_list
 
     def _get_sort_by_mtime(self, post_list:list) -> list:
@@ -153,7 +181,7 @@ class PostManipulator:
             category = category.replace(" ", "_")
             category = category.replace("/", "|")
         except:
-            print(post_path)
+            logger.error(f"Failed to process {post_path}")
             return False
 
         post_name = os.path.basename(post_path)
@@ -162,7 +190,7 @@ class PostManipulator:
         if not os.path.exists(final_dir_path):
             os.mkdir(final_dir_path)
         final_post_path = os.path.join(final_dir_path, post_name)
-        # print(final_post_path)
+        # logger.info(final_post_path)
         frontmatter.dump(post_info, final_post_path)
 
         return True
@@ -254,8 +282,11 @@ class PostManipulator:
 
         # * 3. del more-tag in file.
         post_content = self._del_more_tag(content=post_content)
-    
-        # * 4. update for password article
+
+        # * 4. replace <small>...</small> with <sidenote>...</sidenote>
+        post_content = self._replace_small_with_sidenote(post_content)
+
+        # * 5. update for password article
         if (encrypt is None): 
             return post_content
         post_content = self._encrypt_hugo_content(post_content, encrypt)
@@ -313,6 +344,23 @@ class PostManipulator:
         encrypt_content += "\n{{% /hugo-encryptor %}}"
         return encrypt_content
     
+    def _replace_small_with_sidenote(self, content: str) -> str:
+        # ignore code blocks
+        code_block_pattern = re.compile(r'```.*?```', re.DOTALL)
+        preserved_code_blocks = {}
+        for i, match in enumerate(code_block_pattern.finditer(content)):
+            placeholder = f"__CODE_BLOCK_{i}__"
+            preserved_code_blocks[placeholder] = match.group(0)
+            content = content.replace(match.group(0), placeholder)
+        
+        # replace <small>...</small> with <sidenote>...</sidenote>
+        content = re.sub(r'<small>(.*?)</small>', r'<sidenote>\1</sidenote>', content, flags=re.DOTALL)
+        
+        # restore code blocks
+        for placeholder, code_block in preserved_code_blocks.items():
+            content = content.replace(placeholder, code_block)
+        
+        return content
         
     def _surround_latex_by_tag(self, content:str) -> str:
         # *. need to match those inline latex & block latex & ignore those $ in ``` block
@@ -323,7 +371,7 @@ class PostManipulator:
         for i, match in enumerate(code_block_pattern.finditer(content)):
             placeholder = f"__CODE_BLOCK_{i}__"
             preserved_code_blocks[placeholder] = match.group(0)
-            content = content.replace(match.group(0), placeholder)
+            content = content.replace(match(0), placeholder)
 
         # 2. add space surround the inline latex sentence
         inline_latex_pattern = re.compile(r'(?<!\$)(\$.*?\$)(?!\$)')
@@ -393,7 +441,7 @@ class PostModificationScanner:
     def is_modify_within_days(self, file_path, days=5):
         modification_time = os.path.getmtime(file_path)
         file_date = datetime.fromtimestamp(modification_time)
-        # print(f"{file_path}: delta f{datetime.now() - file_date}")
+        # logger.info(f"{file_path}: delta f{datetime.now() - file_date}")
         return datetime.now() - file_date <= timedelta(days=days)
 
     def calculate_md5(self, file_path):
@@ -413,8 +461,8 @@ class PostModificationScanner:
             current_md5 = self.calculate_md5(file_path)
             publish_md5 = self.calculate_md5(publish_file_path)
             if current_md5 != publish_md5:
-                print(f"Updating {filename} in the Publish folder")
-                shutil.copy(file_path, publish_file_path)
+                logger.info(f"Updating {filename} in the Publish folder")
+                # shutil.copy(file_path, publish_file_path)
         else:
             return
 
@@ -446,3 +494,10 @@ if __name__ == "__main__":
     # ----------------test sync post.
     post_scanner = PostModificationScanner("D:\OneDrive\Posts文档", "D:\OneDrive\Posts文档\Published发布")
     post_scanner.scan_and_update()
+
+    # Test logger functionality
+    # logger.debug("This is a debug message for testing logger.")
+    # logger.info("This is an info message for testing logger.")
+    # logger.warning("This is a warning message for testing logger.")
+    # logger.error("This is an error message for testing logger.")
+    # logger.critical("This is a critical message for testing logger.")
