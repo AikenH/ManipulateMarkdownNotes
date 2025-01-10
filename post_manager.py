@@ -52,6 +52,15 @@ logger.addHandler(console_handler)
 # FIXME: 完善异常处理逻辑，不要直接终止流程，而是提示错误的文件
 # FIXME: 考虑是否支持仅针对错误文件重新提取（从自己的log中找文件名或者给定之类）
 def get_create_time(file_path):
+    """
+    获取文件的创建时间，适应不同平台。
+    
+    Args:
+        file_path (str): 文件路径。
+    
+    Returns:
+        float: 文件创建时间的时间戳，如果获取失败则返回None。
+    """
     try:
         if platform.system() == 'Windows':
             return os.path.getctime(file_path)
@@ -63,6 +72,15 @@ def get_create_time(file_path):
         return None
 
 def get_modify_time(file_path):
+    """
+    获取文件的修改时间。
+    
+    Args:
+        file_path (str): 文件路径。
+    
+    Returns:
+        float: 文件修改时间的时间戳，如果获取失败则返回None。
+    """
     try:
         return os.path.getmtime(file_path)
     except Exception as e:
@@ -77,6 +95,15 @@ class PostsIterator:
     MODIFY_TYPE = ['modify']
     INIT_TYPE = ['init', 'initial', 'all']
     def __init__(self, post_path:str, pub_type:str="default", nums:int=1, depth:int=2) -> None:
+        """
+        初始化PostsIterator对象。
+        
+        Args:
+            post_path (str): 帖子目录路径。
+            pub_type (str): 发布类型。
+            nums (int): 帖子数量。
+            depth (int): 搜索深度。
+        """
         self.post_dir_path = post_path
         self.pub_type = pub_type
         self.search_depth = depth
@@ -87,6 +114,15 @@ class PostsIterator:
         return
     
     def get_valid_posts_list(self, post_list) -> list:
+        """
+        获取有效的帖子列表。
+        
+        Args:
+            post_list (list): 所有帖子列表。
+        
+        Returns:
+            list: 有效的帖子列表。
+        """
         # sort post by mod, then select post.
         if (self.pub_type.lower() in self.DEFAULT_TYPE):
             # * sort by create time. 
@@ -107,6 +143,12 @@ class PostsIterator:
         return None
     
     def _get_all_post_list(self):
+        """
+        获取所有帖子列表。
+        
+        Returns:
+            list: 所有帖子列表。
+        """
         all_post_list = []
 
         for i in range(self.search_depth):
@@ -116,6 +158,16 @@ class PostsIterator:
         return all_post_list
 
     def _get_sort_by_ctime(self, post_list:list, verbose:bool=True) -> list:
+        """
+        根据创建时间对帖子进行排序。
+        
+        Args:
+            post_list (list): 帖子列表。
+            verbose (bool): 是否输出详细信息。
+        
+        Returns:
+            list: 排序后的帖子列表。
+        """
         file_data_list = []
         for post in post_list:
             if os.path.isfile(post):
@@ -131,11 +183,28 @@ class PostsIterator:
         return sort_file_list
 
     def _get_sort_by_mtime(self, post_list:list) -> list:
-
+        """
+        根据修改时间对帖子进行排序。
+        
+        Args:
+            post_list (list): 帖子列表。
+        
+        Returns:
+            list: 排序后的帖子列表。
+        """
         return 
     
 
     def __getitem__(self, index):
+        """
+        获取指定索引的帖子。
+        
+        Args:
+            index (int): 索引。
+        
+        Returns:
+            dict: 指定索引的帖子。
+        """
         return self.valid_post_list[index]
 
 
@@ -143,7 +212,13 @@ class PostManipulator:
     HEXO_TYPE = ['icarus', 'hexo']
     HUGO_TYPE = ['papermod', 'hugo']
     def __init__(self, pub_type:str, pub_path:str = "./") -> None:
-
+        """
+        初始化PostManipulator对象。
+        
+        Args:
+            pub_type (str): 发布类型。
+            pub_path (str): 发布路径。
+        """
         # base attr setting
         self.cover_base_path = "/cover/cover{}.jpeg"
         self.cover_list = None # none will not assign cover if cover-mod is none.
@@ -155,6 +230,15 @@ class PostManipulator:
         return
 
     def publish(self, post_path) -> bool:
+        """
+        发布帖子。
+        
+        Args:
+            post_path (str or list): 帖子路径或路径列表。
+        
+        Returns:
+            bool: 发布是否成功。
+        """
         if (self.pub_type.lower() not in self.HEXO_TYPE and self.pub_type not in self.HUGO_TYPE):
             logger.warning("[publish] publish type not support, check your publish type")
             return False
@@ -174,6 +258,15 @@ class PostManipulator:
         return True
     
     def store_by_categories(self, post_path) -> bool:
+        """
+        根据类别存储帖子。
+        
+        Args:
+            post_path (str or list): 帖子路径或路径列表。
+        
+        Returns:
+            bool: 存储是否成功。
+        """
          # * file_path or list
         if (isinstance(post_path, list)):
            for post in post_path:
@@ -189,6 +282,15 @@ class PostManipulator:
         pass
 
     def _move_file_by_categories(self, post_path:str) -> bool:
+        """
+        根据类别移动文件。
+        
+        Args:
+            post_path (str): 帖子路径。
+        
+        Returns:
+            bool: 移动是否成功。
+        """
         try:
             post_info = frontmatter.load(post_path)
             meta_info = post_info.metadata
@@ -210,6 +312,15 @@ class PostManipulator:
 
     
     def _publish(self, post_path:str) -> bool:
+        """
+        发布帖子。
+        
+        Args:
+            post_path (str): 帖子路径。
+        
+        Returns:
+            bool: 发布是否成功。
+        """
         try:
             if self.pub_type.lower() in self.HEXO_TYPE:
                 return self.publish_hexo(post_path)
@@ -223,6 +334,15 @@ class PostManipulator:
             return False
 
     def publish_hexo(self, post:str)->bool:
+        """
+        发布Hexo类型的帖子。
+        
+        Args:
+            post (str): 帖子路径。
+        
+        Returns:
+            bool: 发布是否成功。
+        """
         post_info = frontmatter.load(post)
         meta_info = post_info.metadata
 
@@ -233,6 +353,15 @@ class PostManipulator:
         return res
 
     def publish_hugo(self, post:str)->bool:
+        """
+        发布Hugo类型的帖子。
+        
+        Args:
+            post (str): 帖子路径。
+        
+        Returns:
+            bool: 发布是否成功。
+        """
         post_info = frontmatter.load(post)
         meta_info = post_info.metadata
         
@@ -252,12 +381,30 @@ class PostManipulator:
         return res
 
     def _modify_hexo_metadata(self, meta_info:dict) -> bool:
+        """
+        修改Hexo元数据。
+        
+        Args:
+            meta_info (dict): 元数据字典。
+        
+        Returns:
+            bool: 修改是否成功。
+        """
         # * catch the exception, if something wrong happen return false.
         # maybe pass the exception info as well
 
         return True
 
     def _modify_hugo_metadata(self, meta_info:dict) -> bool:
+        """
+        修改Hugo元数据。
+        
+        Args:
+            meta_info (dict): 元数据字典。
+        
+        Returns:
+            bool: 修改是否成功。
+        """
         # * catch the exception, if something wrong happen return false.
         # maybe pass the exception info as well
 
@@ -287,6 +434,16 @@ class PostManipulator:
     
     
     def _modify_hugo_content(self, post_content, encrypt=None) -> str:
+        """
+        修改Hugo内容。
+        
+        Args:
+            post_content (str): 帖子内容。
+            encrypt (str): 加密字符串。
+        
+        Returns:
+            str: 修改后的内容。
+        """
         # modify those special display.
         # * 1. update latex display by surround by <span></span> or <div></div>
         post_content = self._surround_latex_by_tag(post_content)
@@ -308,13 +465,28 @@ class PostManipulator:
         return post_content
     
     def _record_fail_log(self, res:bool, post_path:str):
+        """
+        记录失败日志。
+        
+        Args:
+            res (bool): 结果。
+            post_path (str): 帖子路径。
+        """
         if (not res):    
             logger.error("[Publish] {} failed, check what happen".format(post_path))
 
         return
 
     def _update_gallery_to_hugo(self, content:str) -> str:
-
+        """
+        更新Hugo画廊格式。
+        
+        Args:
+            content (str): 帖子内容。
+        
+        Returns:
+            str: 修改后的内容。
+        """
         div_pattern = re.compile(r'(<div class="justified-gallery">.*?</div>)', re.DOTALL)
         div_match = div_pattern.search(content)
 
@@ -341,6 +513,15 @@ class PostManipulator:
         return new_content
     
     def _del_more_tag(self, content:str) -> str:
+        """
+        删除Hugo的more标签。
+        
+        Args:
+            content (str): 帖子内容。
+        
+        Returns:
+            str: 修改后的内容。
+        """
         more_pattern = re.compile(r'<!--\s*more\s*-->')
         if not more_pattern:
             return content
@@ -351,6 +532,16 @@ class PostManipulator:
         return new_content
 
     def _encrypt_hugo_content(self, content:str, encrypt:str) -> str:
+        """
+        加密Hugo内容。
+        
+        Args:
+            content (str): 帖子内容。
+            encrypt (str): 加密字符串。
+        
+        Returns:
+            str: 加密后的内容。
+        """
         logger.error("[_encrypt_hugo_content] {}".format(encrypt))
 
         encrypt_content = '{{{{% hugo-encryptor "{}" %}}}} \n'.format(encrypt)
@@ -359,6 +550,15 @@ class PostManipulator:
         return encrypt_content
     
     def _replace_small_with_sidenote(self, content: str) -> str:
+        """
+        将<small>标签替换为<sidenote>标签。
+        
+        Args:
+            content (str): 帖子内容。
+        
+        Returns:
+            str: 修改后的内容。
+        """
         # ignore code blocks
         code_block_pattern = re.compile(r'```.*?```', re.DOTALL)
         preserved_code_blocks = {}
@@ -377,6 +577,15 @@ class PostManipulator:
         return content
         
     def _surround_latex_by_tag(self, content:str) -> str:
+        """
+        用标签包围LaTeX内容。
+        
+        Args:
+            content (str): 帖子内容。
+        
+        Returns:
+            str: 修改后的内容。
+        """
         # *. need to match those inline latex & block latex & ignore those $ in ``` block
         # 1. read code block and ignore it.
         # 非贪婪匹配
@@ -404,6 +613,16 @@ class PostManipulator:
         return content
     
     def _latex_add_space_inline(self, match, content):
+        """
+        在LaTeX行内公式周围添加空格。
+        
+        Args:
+            match (re.Match): 正则匹配对象。
+            content (str): 帖子内容。
+        
+        Returns:
+            str: 修改后的内容。
+        """
         match_expr = match.group(1)
         start_index = match.start()
         end_index = match.end()
@@ -418,6 +637,16 @@ class PostManipulator:
         return match_expr
 
     def _latex_add_div_tags(self, match, content):
+        """
+        在LaTeX块公式周围添加<div>标签。
+        
+        Args:
+            match (re.Match): 正则匹配对象。
+            content (str): 帖子内容。
+        
+        Returns:
+            str: 修改后的内容。
+        """
         latex_block = match.group(1).strip()
         # Check if the block is already wrapped in <div> tags
         if not re.search(r'<div>\s*' + re.escape(latex_block) + r'\s*</div>', content):
@@ -437,10 +666,20 @@ class PostManipulator:
 
 class PostModificationScanner:
     def __init__(self, source_folder, publish_folder):
+        """
+        初始化PostModificationScanner对象。
+        
+        Args:
+            source_folder (str): 源文件夹路径。
+            publish_folder (str): 发布文件夹路径。
+        """
         self.source_folder = source_folder
         self.publish_folder = publish_folder
 
     def scan_and_update(self):
+        """
+        扫描并更新帖子。
+        """
         for dirpath, dirnames, filenames in os.walk(self.source_folder):
             if self.is_publish_folder(dirpath):
                 continue
@@ -450,15 +689,43 @@ class PostModificationScanner:
                     self.process_file(os.path.join(dirpath, filename))
 
     def is_publish_folder(self, path):
+        """
+        判断是否为发布文件夹。
+        
+        Args:
+            path (str): 文件夹路径。
+        
+        Returns:
+            bool: 是否为发布文件夹。
+        """
         return os.path.normpath(path) == os.path.normpath(self.publish_folder)
 
     def is_modify_within_days(self, file_path, days=5):
+        """
+        判断文件是否在指定天数内修改过。
+        
+        Args:
+            file_path (str): 文件路径。
+            days (int): 天数。
+        
+        Returns:
+            bool: 是否在指定天数内修改过。
+        """
         modification_time = os.path.getmtime(file_path)
         file_date = datetime.fromtimestamp(modification_time)
         # logger.info(f"{file_path}: delta f{datetime.now() - file_date}")
         return datetime.now() - file_date <= timedelta(days=days)
 
     def calculate_md5(self, file_path):
+        """
+        计算文件的MD5值。
+        
+        Args:
+            file_path (str): 文件路径。
+        
+        Returns:
+            str: 文件的MD5值。
+        """
         md5_hash = hashlib.md5()
         with open(file_path, 'rb') as f:
             for byte_block in iter(lambda: f.read(4096), b""):
@@ -466,6 +733,12 @@ class PostModificationScanner:
         return md5_hash.hexdigest()
     
     def process_file(self, file_path):
+        """
+        处理文件。
+        
+        Args:
+            file_path (str): 文件路径。
+        """
         try:
             if not self.is_modify_within_days(file_path):
                 return 
@@ -487,12 +760,22 @@ class PostModificationScanner:
 
 class PublishDirectoryUpdateScanner:
     def __init__(self, published_folder, db_path='publish_info.db'):
+        """
+        初始化PublishDirectoryUpdateScanner对象。
+        
+        Args:
+            published_folder (str): 发布文件夹路径。
+            db_path (str): 数据库路径。
+        """
         self.published_folder = published_folder
         self.db_path = db_path
         self._init_db()
         logger.info(f"Initialized PublishDirectoryUpdateScanner with folder: {published_folder} and database: {db_path}")
 
     def _init_db(self):
+        """
+        初始化数据库。
+        """
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         cursor.execute('''
@@ -507,6 +790,12 @@ class PublishDirectoryUpdateScanner:
         logger.info("Database initialized and table created if not exists.")
 
     def _get_last_update_time(self):
+        """
+        获取最后更新时间。
+        
+        Returns:
+            float: 最后更新时间的时间戳。
+        """
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         cursor.execute('SELECT last_update_time, human_readable_time FROM publish_info ORDER BY id DESC LIMIT 1')
@@ -518,6 +807,12 @@ class PublishDirectoryUpdateScanner:
         return last_update_time
 
     def _update_last_update_time(self, update_time):
+        """
+        更新最后更新时间。
+        
+        Args:
+            update_time (float): 更新时间的时间戳。
+        """
         human_readable_time = datetime.fromtimestamp(update_time).strftime('%Y-%m-%d %H:%M:%S')
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
@@ -527,6 +822,12 @@ class PublishDirectoryUpdateScanner:
         logger.info(f"Last update time updated to: {update_time} ({human_readable_time})")
 
     def _get_newest_file_time(self):
+        """
+        获取最新文件的时间。
+        
+        Returns:
+            float: 最新文件的时间戳。
+        """
         newest_time = None
         for dirpath, dirnames, filenames in os.walk(self.published_folder):
             for filename in filenames:
@@ -539,6 +840,9 @@ class PublishDirectoryUpdateScanner:
         return newest_time
 
     def scan_and_update(self):
+        """
+        扫描并更新发布目录。
+        """
         last_update_time = self._get_last_update_time()
         newest_file_time = self._get_newest_file_time()
 
@@ -551,6 +855,12 @@ class PublishDirectoryUpdateScanner:
             logger.info("No updates in the publish directory.")
 
     def _publish_new_files(self, last_update_time):
+        """
+        发布新文件。
+        
+        Args:
+            last_update_time (float): 最后更新时间的时间戳。
+        """
         post_manager = PostManipulator(pub_type='hugo', pub_path='/path/to/deploy/dir')
         for dirpath, dirnames, filenames in os.walk(self.published_folder):
             for filename in filenames:
@@ -567,6 +877,9 @@ class PublishDirectoryUpdateScanner:
                         logger.error(f"Failed to publish file {file_path}: {e}")
 
     def _commit_and_push_changes(self):
+        """
+        提交并推送更改。
+        """
         deploy_dir = '/path/to/deploy/dir'
         os.chdir(deploy_dir)
         logger.info("Committing and pushing changes to remote repository.")
@@ -576,6 +889,9 @@ class PublishDirectoryUpdateScanner:
 
 
 def test_platform_specific_functionality():
+    """
+    测试平台特定功能。
+    """
     current_platform = platform.system()
     logger.info(f"Running tests on platform: {current_platform}")
 
