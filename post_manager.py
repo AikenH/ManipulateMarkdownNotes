@@ -1,6 +1,5 @@
 # FIXME: 重建Github仓库，基于GPT重写README;
 # TODO: 自动触发发布任务：
-# * 1. Publish文件有改动的时候定期触发发布任务，发布到指定的hugo文件夹中，随后自动commit并更新github
 # * 2. Linklog文件夹随着Publish的改动同步更新，同样用.env or sql 存储对应的文件夹数据，当发生改动的时候将新增的文件publish出去
 
 from datetime import datetime, timedelta
@@ -15,6 +14,8 @@ import frontmatter
 from glob import glob
 import logging.handlers
 import platform
+import sqlite3
+import subprocess
 
 # * consider setup logger by .env file
 # Configure logging with file rotation and detailed format
@@ -51,13 +52,24 @@ logger.addHandler(console_handler)
 # FIXME: 完善异常处理逻辑，不要直接终止流程，而是提示错误的文件
 # FIXME: 考虑是否支持仅针对错误文件重新提取（从自己的log中找文件名或者给定之类）
 def get_create_time(file_path):
-    # Get the status of the file
-    file_stat = os.stat(file_path)
-    # Return the birth time (creation time)
-    return file_stat.st_birthtime
+    try:
+        if platform.system() == 'Windows':
+            return os.path.getctime(file_path)
+        else:
+            stat = os.stat(file_path)
+            return stat.st_birthtime if hasattr(stat, 'st_birthtime') else stat.st_mtime
+    except Exception as e:
+        logger.error(f"Failed to get creation time for {file_path}: {e}")
+        return None
+
+def get_modify_time(file_path):
+    try:
+        return os.path.getmtime(file_path)
+    except Exception as e:
+        logger.error(f"Failed to get modification time for {file_path}: {e}")
+        return None
 
 # TODO: 是否要考虑同个category的Post使用同一个Cover
-# TODO: 基于这次的脚本来重建仓库，考虑操作文件位置等
 # IDEA: 考虑是否要支持基本的UI
 
 class PostsIterator:
@@ -104,12 +116,16 @@ class PostsIterator:
         return all_post_list
 
     def _get_sort_by_ctime(self, post_list:list, verbose:bool=True) -> list:
-        file_data_list = [
-            {"pth": post, "ctime": get_create_time(post)}
-            for post in post_list if os.path.isfile(post)
-        ]
+        file_data_list = []
+        for post in post_list:
+            if os.path.isfile(post):
+                ctime = get_create_time(post)
+                if ctime:
+                    file_data_list.append({"pth": post, "ctime": ctime})
+                else:
+                    logger.warning(f"Skipping file {post} due to missing creation time.")
         sort_file_list = sorted(file_data_list, key=lambda x: x["ctime"])
-        if (verbose):
+        if verbose:
             for post in sort_file_list:
                 logger.info(f"{post['pth']} - {datetime.fromtimestamp(post['ctime'])}")
         return sort_file_list
@@ -173,40 +189,38 @@ class PostManipulator:
         pass
 
     def _move_file_by_categories(self, post_path:str) -> bool:
-        post_info = frontmatter.load(post_path)
-        meta_info = post_info.metadata
-
         try:
+            post_info = frontmatter.load(post_path)
+            meta_info = post_info.metadata
+
             category = meta_info["categories"][0]
-            category = category.replace(" ", "_")
-            category = category.replace("/", "|")
-        except:
-            logger.error(f"Failed to process {post_path}")
+            category = category.replace(" ", "_").replace("/", "|")
+
+            post_name = os.path.basename(post_path)
+            final_dir_path = os.path.join(self.pub_path, category)
+            
+            if not os.path.exists(final_dir_path):
+                os.mkdir(final_dir_path)
+            final_post_path = os.path.join(final_dir_path, post_name)
+            frontmatter.dump(post_info, final_post_path)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to move file by categories for {post_path}: {e}")
             return False
-
-        post_name = os.path.basename(post_path)
-        final_dir_path = os.path.join(self.pub_path, category)
-        
-        if not os.path.exists(final_dir_path):
-            os.mkdir(final_dir_path)
-        final_post_path = os.path.join(final_dir_path, post_name)
-        # logger.info(final_post_path)
-        frontmatter.dump(post_info, final_post_path)
-
-        return True
 
     
     def _publish(self, post_path:str) -> bool:
-        if (self.pub_type.lower() in self.HEXO_TYPE):            
-            res = self.publish_hexo(post_path)
-
-        elif (self.pub_type.lower() in self.HUGO_TYPE):
-            res = self.publish_hugo(post_path)
-
-        if(not res):
+        try:
+            if self.pub_type.lower() in self.HEXO_TYPE:
+                return self.publish_hexo(post_path)
+            elif self.pub_type.lower() in self.HUGO_TYPE:
+                return self.publish_hugo(post_path)
+            else:
+                logger.warning(f"Publish type {self.pub_type} not supported.")
+                return False
+        except Exception as e:
+            logger.error(f"Failed to publish {post_path}: {e}")
             return False
-        
-        return True
 
     def publish_hexo(self, post:str)->bool:
         post_info = frontmatter.load(post)
@@ -452,37 +466,114 @@ class PostModificationScanner:
         return md5_hash.hexdigest()
     
     def process_file(self, file_path):
-        if not self.is_modify_within_days(file_path):
-            return 
-        filename = os.path.basename(file_path)
-        publish_file_path = os.path.join(self.publish_folder, filename)
+        try:
+            if not self.is_modify_within_days(file_path):
+                return 
+            filename = os.path.basename(file_path)
+            publish_file_path = os.path.join(self.publish_folder, filename)
 
-        if os.path.exists(publish_file_path):
-            current_md5 = self.calculate_md5(file_path)
-            publish_md5 = self.calculate_md5(publish_file_path)
-            if current_md5 != publish_md5:
-                logger.info(f"Updating {filename} in the Publish folder")
-                # shutil.copy(file_path, publish_file_path)
+            if os.path.exists(publish_file_path):
+                current_md5 = self.calculate_md5(file_path)
+                publish_md5 = self.calculate_md5(publish_file_path)
+                if current_md5 != publish_md5:
+                    logger.info(f"Updating {filename} in the Publish folder")
+                    shutil.copy(file_path, publish_file_path)
+                else:
+                    logger.info(f"{filename} has no changes.")
             else:
-                logger.info(f" {filename} have some hdf5 info")
-        else:
-            return
-
+                logger.debug(f" {filename} is not a publish file, just ignore it.")
+        except Exception as e:
+            logger.error(f"Failed to process file {file_path}: {e}")
 
 class PublishDirectoryUpdateScanner:
-    def __init__(self, published_folder):
+    def __init__(self, published_folder, db_path='publish_info.db'):
         self.published_folder = published_folder
-    
-    def scan_and_update(self):
-        
-        return 
+        self.db_path = db_path
+        self._init_db()
+        logger.info(f"Initialized PublishDirectoryUpdateScanner with folder: {published_folder} and database: {db_path}")
 
-def test_logger():
-    logger.debug("This is a debug message for testing logger.")
-    logger.info("This is an info message for testing logger.")
-    logger.warning("This is a warning message for testing logger.")
-    logger.error("This is an error message for testing logger.")
-    logger.critical("This is a critical message for testing logger.")
+    def _init_db(self):
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS publish_info (
+                id INTEGER PRIMARY KEY,
+                last_update_time TIMESTAMP,
+                human_readable_time TEXT
+            )
+        ''')
+        conn.commit()
+        conn.close()
+        logger.info("Database initialized and table created if not exists.")
+
+    def _get_last_update_time(self):
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute('SELECT last_update_time, human_readable_time FROM publish_info ORDER BY id DESC LIMIT 1')
+        result = cursor.fetchone()
+        conn.close()
+        last_update_time = result[0] if result else None
+        human_readable_time = result[1] if result else None
+        logger.info(f"Last update time retrieved: {last_update_time} ({human_readable_time})")
+        return last_update_time
+
+    def _update_last_update_time(self, update_time):
+        human_readable_time = datetime.fromtimestamp(update_time).strftime('%Y-%m-%d %H:%M:%S')
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute('INSERT INTO publish_info (last_update_time, human_readable_time) VALUES (?, ?)', (update_time, human_readable_time))
+        conn.commit()
+        conn.close()
+        logger.info(f"Last update time updated to: {update_time} ({human_readable_time})")
+
+    def _get_newest_file_time(self):
+        newest_time = None
+        for dirpath, dirnames, filenames in os.walk(self.published_folder):
+            for filename in filenames:
+                file_path = os.path.join(dirpath, filename)
+                file_time = max(os.path.getctime(file_path), os.path.getmtime(file_path))
+                if newest_time is None or file_time > newest_time:
+                    newest_time = file_time
+        human_readable_time = datetime.fromtimestamp(newest_time).strftime('%Y-%m-%d %H:%M:%S') if newest_time else None
+        logger.info(f"Newest file time in publish directory: {newest_time} ({human_readable_time})")
+        return newest_time
+
+    def scan_and_update(self):
+        last_update_time = self._get_last_update_time()
+        newest_file_time = self._get_newest_file_time()
+
+        if last_update_time is None or newest_file_time > last_update_time:
+            logger.info("Publish directory has been updated. Starting publish process.")
+            self._publish_new_files(last_update_time)
+            self._update_last_update_time(newest_file_time)
+            # self._commit_and_push_changes()
+        else:
+            logger.info("No updates in the publish directory.")
+
+    def _publish_new_files(self, last_update_time):
+        post_manager = PostManipulator(pub_type='hugo', pub_path='/path/to/deploy/dir')
+        for dirpath, dirnames, filenames in os.walk(self.published_folder):
+            for filename in filenames:
+                if not filename.endswith('.md'):
+                    continue
+                file_path = os.path.join(dirpath, filename)
+                file_time = max(get_create_time(file_path), get_modify_time(file_path))
+                if last_update_time is None or file_time > last_update_time:
+                    human_readable_time = datetime.fromtimestamp(file_time).strftime('%Y-%m-%d %H:%M:%S')
+                    logger.info(f"Publishing file: {file_path} (modified at {human_readable_time})")
+                    try:
+                        post_manager.publish(file_path)
+                    except Exception as e:
+                        logger.error(f"Failed to publish file {file_path}: {e}")
+
+    def _commit_and_push_changes(self):
+        deploy_dir = '/path/to/deploy/dir'
+        os.chdir(deploy_dir)
+        logger.info("Committing and pushing changes to remote repository.")
+        subprocess.run(['git', 'add', '.'], check=True)
+        subprocess.run(['git', 'commit', '-m', 'Auto-publish updated files'], check=True)
+        subprocess.run(['git', 'push'], check=True)
+
 
 def test_platform_specific_functionality():
     current_platform = platform.system()
@@ -532,4 +623,8 @@ if __name__ == "__main__":
 
     # Test platform-specific functionality
     test_platform_specific_functionality()
+
+    # Test PublishDirectoryUpdateScanner
+    publish_scanner = PublishDirectoryUpdateScanner("/Users/aikenhong/Library/CloudStorage/OneDrive-个人/Posts文档/Published发布")
+    publish_scanner.scan_and_update()
 
